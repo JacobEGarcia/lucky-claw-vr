@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>LUCKY CLAW - a hand-inked claw machine in VR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root { --paper:#f3eee3; --ink:#2e2a26; --pink:#f2a7c3; --plum:#8a3f5c; --peri:#8b93d4; }
+  html,body { margin:0; padding:0; height:100%; overflow:hidden; background:var(--paper); font-family:'Courier Prime',monospace; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+  #vignette { position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0) 62%, rgba(46,42,38,.10) 100%); }
+  #overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(46,42,38,.55); z-index:20; transition:opacity .5s ease; }
+  #overlay.hidden { opacity:0; pointer-events:none; }
+  .card { max-width:560px; width:90%; background:var(--paper); color:var(--ink); border:2.5px solid var(--ink);
+    border-radius:6px; padding:30px 38px 28px; box-shadow:8px 10px 0 rgba(46,42,38,.25); }
+  .fig { display:flex; justify-content:space-between; font-size:12px; letter-spacing:.06em; color:#6b655c; }
+  h1 { margin:8px 0 2px; font-size:42px; font-weight:700; letter-spacing:.04em; color:var(--plum); }
+  .sub { margin:0 0 14px; font-size:14px; color:#6b655c; }
+  .howto { font-size:13.5px; line-height:1.7; border-top:1.5px dashed #b9b1a0; border-bottom:1.5px dashed #b9b1a0; padding:12px 0; margin-bottom:20px; }
+  .howto b { color:var(--plum); }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .pill { appearance:none; cursor:pointer; background:var(--paper); color:var(--ink);
+    font-family:'Courier Prime',monospace; font-size:13px; letter-spacing:.06em;
+    padding:10px 20px; border:2px solid var(--ink); border-radius:999px; transition:all .12s; }
+  .pill:hover { background:var(--ink); color:var(--paper); }
+  .pill.primary { background:var(--plum); border-color:var(--plum); color:var(--paper); }
+  .pill.primary:hover { background:#6f3249; }
+  /* in-game desktop side panel, echoing the figure */
+  #panel { position:fixed; left:22px; top:50%; transform:translateY(-50%); z-index:10; display:none;
+    flex-direction:column; gap:10px; align-items:flex-start; }
+  #panel .lbl { font-size:11px; letter-spacing:.28em; color:#6b655c; margin-bottom:2px; }
+  #panel .pill { background:rgba(243,238,227,.92); }
+  #counters { position:fixed; right:26px; top:24px; z-index:10; display:none; text-align:right; color:var(--ink); }
+  #counters .k { font-size:11px; letter-spacing:.28em; color:#6b655c; }
+  #counters .v { font-size:34px; font-weight:700; line-height:1.05; }
+  #counters .v small { font-size:16px; color:#6b655c; }
+  #figcap { position:fixed; left:26px; top:24px; z-index:10; display:none; color:var(--ink); }
+  #figcap .f1 { font-size:15px; font-weight:700; }
+  #figcap .f2 { font-size:12px; color:#6b655c; font-style:italic; margin-top:2px; }
+  #toast { position:fixed; left:50%; bottom:10%; transform:translateX(-50%); z-index:15; pointer-events:none;
+    background:var(--paper); color:var(--ink); border:2px solid var(--ink); border-radius:999px;
+    font-size:13px; letter-spacing:.08em; padding:9px 22px; opacity:0; transition:opacity .35s; }
+  #toast.show { opacity:1; }
+  #vrbutton-holder button { position:static !important; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="vignette"></div>
+<div id="figcap"><div class="f1">Fig. 1 — Claw machine</div><div class="f2">insert a coin, steer with the stick, drop to grab</div></div>
+<div id="counters">
+  <div class="k">TOKENS</div><div class="v" id="c-tokens">10</div>
+  <div class="k" style="margin-top:10px">PRIZES WON</div><div class="v" id="c-won">0</div>
+</div>
+<div id="panel">
+  <div class="lbl">PLAY</div>
+  <button class="pill" id="b-coin">Insert coin</button>
+  <button class="pill" id="b-drop">Drop</button>
+  <button class="pill" id="b-reset">Start over</button>
+</div>
+<div id="toast"></div>
+<div id="overlay">
+  <div class="card">
+    <div class="fig"><span>Fig. 1 — Claw machine</span><span>PLAY</span></div>
+    <h1>LUCKY CLAW</h1>
+    <p class="sub">a hand-inked claw machine, life size &middot; colorfigures &middot; quest 3 &middot; webxr</p>
+    <div class="howto">
+      <b>Quest 3:</b> open this page in the headset browser and tap ENTER VR. Either thumbstick steers the claw,
+      trigger drops it. Point at the paper buttons and pull the trigger for INSERT COIN and START OVER.<br><br>
+      <b>On a screen:</b> click PLAY, then steer with the arrow keys (or WASD), Space to drop.
+      Every play costs a token; the claw slips sometimes, like a real one. Third try never misses.
+    </div>
+    <div class="row">
+      <button class="pill primary" id="flatbtn">PLAY ON SCREEN</button>
+      <span id="vrslot"></span>
+    </div>
+  </div>
+</div>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+// ---------- palette ----------
+const PAPER=0xf3eee3, INK=0x2e2a26, PINK=0xf2a7c3, PINK_D=0xe88bb0, PLUM=0x8a3f5c,
+      PERI=0x8b93d4, CREAM=0xfdf8ec, WHITE=0xffffff;
+
+// ---------- renderer / scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(PAPER);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.05, 60);
+const rig = new THREE.Group();
+rig.add(camera);
+scene.add(rig);
+rig.position.set(0, 0, 2.75);
+camera.position.set(0, 1.5, 0);
+camera.lookAt(0, 1.0, 0);
+
+scene.add(new THREE.HemisphereLight(0xfff6e8, 0xd8cfae, 1.05));
+const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
+sun.position.set(3, 6, 4);
+scene.add(sun);
+
+// ---------- toon + ink helpers ----------
+const grad = new THREE.DataTexture(new Uint8Array([90,150,205,255]), 4, 1, THREE.RedFormat);
+grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
+const toon = (color, opts={}) => new THREE.MeshToonMaterial({ color, gradientMap:grad, ...opts });
+function ink(mesh, t=1.035){
+  const o = new THREE.Mesh(mesh.geometry, new THREE.MeshBasicMaterial({ color:INK, side:THREE.BackSide }));
+  o.scale.setScalar(t); o.raycast = ()=>{}; mesh.add(o); return o;
+}
+function box(w,h,d,color,x=0,y=0,z=0,outline=true){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), toon(color));
+  m.position.set(x,y,z); if(outline) ink(m); return m;
+}
+function ball(r,color,x=0,y=0,z=0,ws=20,hs=14){
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r,ws,hs), toon(color));
+  m.position.set(x,y,z); ink(m,1.05); return m;
+}
+// paper-label plane from text
+function label(text, w, opts={}){
+  const { size=44, pad=26, color='#2e2a26', bg=null, border=true, italic=false, bold=true } = opts;
+  const cv = document.createElement('canvas');
+  const f = `${italic?'italic ':''}${bold?'700':'400'} ${size}px "Courier Prime", monospace`;
+  const g0 = cv.getContext('2d'); g0.font = f;
+  const tw = Math.ceil(g0.measureText(text).width);
+  cv.width = tw + pad*2; cv.height = size + pad*2;
+  const g = cv.getContext('2d');
+  if (bg){ g.fillStyle = bg; g.fillRect(0,0,cv.width,cv.height); }
+  if (border){ g.strokeStyle = color; g.lineWidth = 4; g.strokeRect(3,3,cv.width-6,cv.height-6); }
+  g.font = f; g.fillStyle = color; g.textBaseline = 'middle';
+  g.fillText(text, pad, cv.height/2 + 2);
+  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4; tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w*cv.height/cv.width),
+    new THREE.MeshBasicMaterial({ map:tex, transparent:true }));
+  return m;
+}
+// pill button (VR-clickable + raycast target)
+const clickables = [];
+function pill3d(text, w=0.34){
+  const grp = new THREE.Group();
+  const cv = document.createElement('canvas'); const pad=30, size=46;
+  const f = `700 ${size}px "Courier Prime", monospace`;
+  const g0=cv.getContext('2d'); g0.font=f;
+  cv.width=Math.ceil(g0.measureText(text).width)+pad*2; cv.height=size+pad*1.7;
+  const g=cv.getContext('2d');
+  const r=cv.height/2-4;
+  g.beginPath(); g.roundRect(4,4,cv.width-8,cv.height-8,r);
+  g.fillStyle='#f3eee3'; g.fill(); g.lineWidth=5; g.strokeStyle='#2e2a26'; g.stroke();
+  g.font=f; g.fillStyle='#2e2a26'; g.textBaseline='middle'; g.fillText(text,pad,cv.height/2+2);
+  const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w, w*cv.height/cv.width),
+    new THREE.MeshBasicMaterial({ map:tex, transparent:true }));
+  grp.add(m); grp.userData.action=text; clickables.push(m);
+  return grp;
+}
+
+// ---------- ground: paper + periwinkle blob ----------
+const ground = new THREE.Mesh(new THREE.CircleGeometry(14, 48), new THREE.MeshBasicMaterial({ color:PAPER }));
+ground.rotation.x = -Math.PI/2; scene.add(ground);
+const blob = new THREE.Mesh(new THREE.CircleGeometry(1.15, 40), new THREE.MeshBasicMaterial({ color:PERI }));
+blob.rotation.x = -Math.PI/2; blob.position.set(0.12, 0.005, -0.1); blob.scale.set(1.25,1,0.95); scene.add(blob);
+
+// ---------- the machine ----------
+const M = new THREE.Group(); scene.add(M);
+const W=1.05, D=0.78, BASE_H=0.62, GLASS_H=0.72, TOP_H=0.12, SIGN_H=0.30;
+const baseY = 0.02;
+// cabinet base (plum) + pink upper
+M.add(box(W, BASE_H, D, PLUM, 0, baseY+BASE_H/2, 0));
+M.add(box(W, 0.06, D, PINK_D, 0, baseY+BASE_H+0.03, 0));
+// glass box frame: 4 corner posts + top/bottom beams
+const postW=0.055, gy=baseY+BASE_H+0.06, gtop=gy+GLASS_H;
+for (const sx of [-1,1]) for (const sz of [-1,1])
+  M.add(box(postW, GLASS_H, postW, PINK, sx*(W/2-postW/2), gy+GLASS_H/2, sz*(D/2-postW/2)));
+M.add(box(W, 0.06, D, PINK, 0, gtop+0.03, 0));
+// glass panels
+const glassMat = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.10, depthWrite:false, side:THREE.DoubleSide });
+const gF = new THREE.Mesh(new THREE.PlaneGeometry(W-postW*2, GLASS_H), glassMat);
+gF.position.set(0, gy+GLASS_H/2, D/2-0.005); M.add(gF);
+const gB = gF.clone(); gB.position.z = -D/2+0.005; M.add(gB);
+const gS = new THREE.Mesh(new THREE.PlaneGeometry(D-postW*2, GLASS_H), glassMat);
+gS.rotation.y = Math.PI/2; gS.position.set(W/2-0.005, gy+GLASS_H/2, 0); M.add(gS);
+const gS2 = gS.clone(); gS2.position.x = -W/2+0.005; M.add(gS2);
+// roof + marquee sign
+M.add(box(W, TOP_H, D, PINK_D, 0, gtop+0.06+TOP_H/2, 0));
+const sign = box(W*0.86, SIGN_H, 0.07, CREAM, 0, gtop+0.06+TOP_H+SIGN_H/2+0.02, 0.05);
+sign.rotation.x = -0.06; M.add(sign);
+// marquee bulbs
+for (let i=0;i<9;i++){
+  const b = ball(0.016, 0xffe9a8, -W*0.86/2+0.06+i*(W*0.86-0.12)/8, gtop+0.06+TOP_H+SIGN_H-0.005, 0.095, 10, 8);
+  b.material = new THREE.MeshBasicMaterial({ color: i%2? 0xffe9a8 : 0xffc9dd }); M.add(b);
+}
+// PRIZES door on base front
+const door = box(0.34, 0.26, 0.02, 0x9c5470, -0.22, baseY+0.30, D/2+0.005); M.add(door);
+// coin panel
+const panel = box(0.20, 0.24, 0.02, 0x3a3f4a, 0.26, baseY+0.34, D/2+0.005); M.add(panel);
+const slot = box(0.05, 0.012, 0.012, 0xdad4c4, 0.26, baseY+0.40, D/2+0.02, false); M.add(slot);
+const knob = ball(0.028, 0xd23b3b, 0.26, baseY+0.30, D/2+0.03, 12, 10); M.add(knob);
+// joystick on deck
+const deck = box(W, 0.05, 0.14, PINK_D, 0, baseY+BASE_H+0.005, D/2+0.055); M.add(deck);
+const stickBase = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.055,0.02,16), toon(PLUM));
+stickBase.position.set(0.14, baseY+BASE_H+0.04, D/2+0.055); ink(stickBase,1.06); M.add(stickBase);
+const stickRod = new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,0.09,8), toon(0xdad4c4));
+stickRod.position.set(0.14, baseY+BASE_H+0.095, D/2+0.055); M.add(stickRod);
+const stickBall = ball(0.022, 0xd23b3b, 0.14, baseY+BASE_H+0.15, D/2+0.055, 12, 10); M.add(stickBall);
+const dropBtn = new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.032,0.018,16), toon(0xd23b3b));
+dropBtn.position.set(-0.14, baseY+BASE_H+0.038, D/2+0.055); ink(dropBtn,1.07); M.add(dropBtn);
+
+// interior pit floor + pile mound
+const pitY = gy+0.02;
+const pit = box(W-postW*2-0.04, 0.05, D-postW*2-0.04, 0xf7d9e6, 0, pitY, 0); M.add(pit);
+
+// ---------- prizes ----------
+const prizeGroup = new THREE.Group(); M.add(prizeGroup);
+const CAPS = [0xff5d8f,0x4ecdc4,0xffd93d,0x6a67ce,0xff8c42,0x7bd389,0x5aa9e6,0xf9f871];
+function capsule(color){
+  const g = new THREE.Group();
+  const r=0.045;
+  const bot = new THREE.Mesh(new THREE.SphereGeometry(r,16,12,0,Math.PI*2,Math.PI/2,Math.PI/2), toon(color));
+  const top = new THREE.Mesh(new THREE.SphereGeometry(r,16,12,0,Math.PI*2,0,Math.PI/2), toon(0xfdf8ec,{transparent:true,opacity:0.85}));
+  ink(bot,1.06); g.add(bot,top);
+  return g;
+}
+function teddy(color){
+  const g = new THREE.Group();
+  const body = ball(0.052,color,0,0,0); body.scale.set(1,1.12,0.9); g.add(body);
+  const head = ball(0.042,color,0,0.085,0); g.add(head);
+  for (const sx of [-1,1]){
+    g.add(ball(0.016,color,sx*0.034,0.125,0,10,8));       // ears
+    const arm = ball(0.018,color,sx*0.055,0.01,0.01,10,8); g.add(arm);
+    const leg = ball(0.02,color,sx*0.03,-0.055,0.02,10,8); g.add(leg);
+  }
+  g.add(ball(0.02,0xfdf0dc,0,0.072,0.036,10,8));           // snout
+  const belly = ball(0.03,0xfdf0dc,0,-0.01,0.038,10,8); belly.scale.set(1,1.15,0.5); g.add(belly);
+  for (const sx of [-1,1]) g.add(ball(0.006,INK,sx*0.015,0.093,0.038,8,6)); // eyes
+  return g;
+}
+const prizes = [];
+function seedPrizes(){
+  while (prizeGroup.children.length) prizeGroup.remove(prizeGroup.children[0]);
+  prizes.length = 0;
+  const rx = W/2-postW-0.09, rz = D/2-postW-0.09;
+  for (let i=0;i<24;i++){
+    const c = capsule(CAPS[i%CAPS.length]);
+    const a = Math.random()*Math.PI*2, rr = Math.sqrt(Math.random());
+    c.position.set(Math.cos(a)*rx*rr*0.85, pitY+0.075+Math.random()*0.10*(1-rr), Math.sin(a)*rz*rr*0.85);
+    c.rotation.set(Math.random()*0.9-0.45, Math.random()*Math.PI*2, Math.random()*0.9-0.45);
+    c.userData = { kind:'capsule', caught:false };
+    prizeGroup.add(c); prizes.push(c);
+  }
+  for (let i=0;i<8;i++){
+    const c = capsule(CAPS[(i+3)%CAPS.length]);
+    const a = Math.random()*Math.PI*2, rr = Math.sqrt(Math.random())*0.5;
+    c.position.set(Math.cos(a)*rx*rr, pitY+0.16+Math.random()*0.04, Math.sin(a)*rz*rr);
+    c.rotation.set(Math.random()*0.9-0.45, Math.random()*Math.PI*2, Math.random()*0.9-0.45);
+    c.userData = { kind:'capsule', caught:false };
+    prizeGroup.add(c); prizes.push(c);
+  }
+  const tcols=[0xf6b8c8,0xbfd9ff,0xd9b48a,0xfdf0dc,0xc7e6c9,0xe6ccF2];
+  for (let i=0;i<6;i++){
+    const t = teddy(tcols[i%tcols.length]);
+    const a = (i/6)*Math.PI*2 + 0.5;
+    t.position.set(Math.cos(a)*rx*0.62, pitY+0.16, Math.sin(a)*rz*0.62);
+    t.rotation.y = Math.random()*Math.PI*2;
+    t.userData = { kind:'teddy', caught:false };
+    prizeGroup.add(t); prizes.push(t);
+  }
+}
+seedPrizes();
+
+// ---------- claw rig ----------
+const railY = gtop-0.045;
+const railZ1 = box(W-postW*2, 0.025, 0.03, 0x6b655c, 0, railY, -0.1); M.add(railZ1);
+const railZ2 = box(W-postW*2, 0.025, 0.03, 0x6b655c, 0, railY,  0.12); M.add(railZ2);
+const carriage = new THREE.Group(); M.add(carriage);
+carriage.position.set(0, railY-0.02, 0.01);
+const carBox = box(0.16, 0.05, 0.34, PINK, 0, 0, 0); carriage.add(carBox);
+const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,1,8), toon(0x4a453e));
+carriage.add(cable);
+const clawHub = new THREE.Group(); carriage.add(clawHub);
+const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.045,0.05,12), toon(0xdad4c4));
+ink(hub,1.07); clawHub.add(hub);
+const prongs = [];
+for (let i=0;i<3;i++){
+  const pivot = new THREE.Group();
+  const a = (i/3)*Math.PI*2;
+  pivot.position.set(Math.cos(a)*0.032, -0.02, Math.sin(a)*0.032);
+  pivot.rotation.y = -a;
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.009,0.006,0.15,8), toon(0xdad4c4));
+  arm.position.set(0.028, -0.07, 0); arm.rotation.z = 0.42; ink(arm,1.15);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.010,0.06,8), toon(0xbfae9c));
+  tip.position.set(0.062,-0.135,0); tip.rotation.z = -2.5;
+  pivot.add(arm, tip);
+  clawHub.add(pivot); prongs.push(pivot);
+}
+const clawHomeY = -0.10;
+clawHub.position.y = clawHomeY;
+cable.scale.y = 0.10; cable.position.y = -0.05;
+function setClawOpen(f){ // 0 closed .. 1 open
+  for (const p of prongs) p.rotation.z = -0.12 - f*0.5;
+}
+setClawOpen(0.55);
+
+// ---------- collection shelf ----------
+const shelf = new THREE.Group(); shelf.position.set(0.95, 0, 0.55); shelf.rotation.y = -0.5; scene.add(shelf);
+const shelfTop = box(0.62, 0.04, 0.4, CREAM, 0, 0.55, 0); shelf.add(shelfTop);
+for (const sx of [-1,1]) for (const sz of [-1,1])
+  shelf.add(box(0.04, 0.55, 0.04, PLUM, sx*0.27, 0.275, sz*0.16));
+const wonGroup = new THREE.Group(); shelf.add(wonGroup);
+
+// ---------- floating paper labels ----------
+const figLabel = label('Fig. 1 — Claw machine', 0.62, { border:false, size:40 });
+figLabel.position.set(-0.62, 2.32, 0.15); figLabel.rotation.y = 0.35; scene.add(figLabel);
+const hintLabel = label('insert a coin, steer with the stick, drop to grab', 0.72, { border:false, size:30, italic:true, bold:false, color:'#6b655c' });
+hintLabel.position.set(0.62, 2.32, 0.15); hintLabel.rotation.y = -0.35; scene.add(hintLabel);
+figLabel.visible = hintLabel.visible = false;
+const signLabel = label('LUCKY CLAW', 0.62, { border:false, size:52, color:'#d1495b' });
+signLabel.position.set(0, gtop+0.06+TOP_H+SIGN_H/2+0.02, 0.095); signLabel.rotation.x = -0.06; M.add(signLabel);
+const prizesLabel = label('PRIZES', 0.20, { border:false, size:44, color:'#f6d9e4' });
+prizesLabel.position.set(-0.22, baseY+0.30, D/2+0.018); M.add(prizesLabel);
+const coinLabel = label('INSERT COIN', 0.15, { border:false, size:36, color:'#8ef0b8' });
+coinLabel.position.set(0.26, baseY+0.345, D/2+0.018); M.add(coinLabel);
+
+// VR counter panel + buttons
+const vrPanel = new THREE.Group(); vrPanel.position.set(0.78, 1.62, 0.9); vrPanel.rotation.y = -0.62; scene.add(vrPanel);
+let tokensTex, wonTex;
+function counterPlane(){
+  const cv = document.createElement('canvas'); cv.width=260; cv.height=120;
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.30,0.138), new THREE.MeshBasicMaterial({ map:tex, transparent:true }));
+  m.userData.cv=cv; return m;
+}
+const tokM = counterPlane(), wonM = counterPlane();
+tokM.position.set(0,0.17,0); wonM.position.set(0,0.0,0); vrPanel.add(tokM, wonM);
+function drawCounter(mesh, k, v){
+  const g = mesh.userData.cv.getContext('2d');
+  g.clearRect(0,0,260,120);
+  g.fillStyle='#6b655c'; g.font='400 22px "Courier Prime", monospace'; g.textAlign='center';
+  g.fillText(k.split('').join(' '), 130, 32);
+  g.fillStyle='#2e2a26'; g.font='700 64px "Courier Prime", monospace';
+  g.fillText(String(v), 130, 100);
+  mesh.material.map.needsUpdate = true;
+}
+const btnCoin = pill3d('Insert coin'); btnCoin.position.set(0,-0.17,0); vrPanel.add(btnCoin);
+const btnReset = pill3d('Start over'); btnReset.position.set(0,-0.30,0); vrPanel.add(btnReset);
+vrPanel.visible = false;
+
+// ---------- audio ----------
+let AC=null;
+function beep(freq, dur=0.09, type='square', vol=0.05, when=0){
+  if (!AC) return;
+  const t = AC.currentTime + when;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  o.connect(g).connect(AC.destination); o.start(t); o.stop(t+dur+0.02);
+}
+const sndCoin=()=>{beep(988,.07,'square',.06);beep(1319,.12,'square',.06,.08);};
+const sndDrop=()=>{beep(220,.25,'sawtooth',.03);};
+const sndGrab=()=>{beep(523,.06,'square',.06);beep(392,.08,'square',.05,.07);};
+const sndWin =()=>{[523,659,784,1047].forEach((f,i)=>beep(f,.14,'triangle',.07,i*0.11));};
+const sndSlip=()=>{beep(330,.1,'sine',.06);beep(196,.22,'sine',.06,.1);};
+const sndNo  =()=>{beep(160,.12,'square',.05);};
+
+// ---------- game state ----------
+const S = { tokens:10, won:0, phase:'idle', missedSinceWin:0, heldPrize:null };
+let anim = null; // active timeline fn
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+function syncUI(){
+  document.getElementById('c-tokens').textContent = S.tokens;
+  document.getElementById('c-won').textContent = S.won;
+  drawCounter(tokM,'TOKENS',S.tokens); drawCounter(wonM,'PRIZES WON',S.won);
+}
+syncUI();
+
+const clampX = W/2-postW-0.10, clampZ = D/2-postW-0.10;
+function steer(dx,dz,dt){
+  if (S.phase!=='idle' && S.phase!=='steer') return;
+  if (S.phase==='idle' && S.tokens<=0){ return; }
+  S.phase='steer';
+  carriage.position.x = THREE.MathUtils.clamp(carriage.position.x+dx*dt*0.55, -clampX, clampX);
+  carriage.position.z = THREE.MathUtils.clamp(carriage.position.z+dz*dt*0.55, -clampZ, clampZ);
+  stickRod.rotation.z = -dx*0.35; stickRod.rotation.x = dz*0.35;
+  stickBall.position.x = 0.14 + Math.sin(-dx*0.35)*0.045;
+  stickBall.position.z = (D/2+0.055) + Math.sin(dz*0.35)*0.045;
+}
+function insertCoin(){
+  S.tokens++; syncUI(); sndCoin();
+  knob.scale.setScalar(1.35); setTimeout(()=>knob.scale.setScalar(1),140);
+  toast('+1 token');
+}
+function resetGame(){
+  S.tokens=10; S.won=0; S.missedSinceWin=0; S.phase='idle'; S.heldPrize=null; anim=null;
+  seedPrizes();
+  while (wonGroup.children.length) wonGroup.remove(wonGroup.children[0]);
+  carriage.position.set(0, railY-0.02, 0.01);
+  clawHub.position.y = clawHomeY; setClawOpen(0.55);
+  syncUI(); toast('fresh tokens - good luck');
+}
+function tween(dur, fn, done){
+  const t0 = performance.now();
+  anim = (now)=>{
+    const f = Math.min(1,(now-t0)/(dur*1000));
+    fn(f);
+    if (f<1) return true;
+    anim=null; done && done(); return false;
+  };
+}
+const chutePos = new THREE.Vector3(-0.22, gy+0.10, D/2-0.10); // above PRIZES door
+function dropClaw(){
+  if (anim) return;
+  if (S.tokens<=0){ sndNo(); toast('no tokens - insert a coin'); return; }
+  S.tokens--; syncUI(); S.phase='dropping'; sndDrop();
+  const startY = clawHub.position.y;
+  const pitDepth = (pitY+0.09) - (railY-0.02);
+  tween(1.15, f=>{
+    const y = THREE.MathUtils.lerp(startY, pitDepth, f*f);
+    clawHub.position.y = y;
+    const cLen = -y+0.02; cable.scale.y = cLen; cable.position.y = -cLen/2 - 0.02;
+    setClawOpen(0.55+0.45*Math.sin(f*Math.PI));
+  }, ()=>{
+    // grab check
+    setClawOpen(0.02); sndGrab();
+    let best=null, bd=1e9;
+    for (const p of prizes){
+      if (p.userData.caught) continue;
+      const wp = new THREE.Vector3(); p.getWorldPosition(wp);
+      const cw = new THREE.Vector3(); clawHub.getWorldPosition(cw);
+      const d = Math.hypot(wp.x-cw.x, wp.z-cw.z);
+      if (d<bd){ bd=d; best=p; }
+    }
+    const inRange = best && bd<0.105;
+    const pity = S.missedSinceWin>=2;
+    const chance = best && (best.userData.kind==='teddy'?0.78:0.62);
+    const success = inRange && (pity || Math.random()<chance);
+    if (success){
+      best.userData.caught = true; S.heldPrize=best;
+      prizes.splice(prizes.indexOf(best),1);
+    }
+    tween(1.0, f=>{
+      const y = THREE.MathUtils.lerp(pitDepth, clawHomeY, f);
+      clawHub.position.y = y;
+      const cLen=-y+0.02; cable.scale.y=cLen; cable.position.y=-cLen/2-0.02;
+      if (S.heldPrize){
+        const cw = new THREE.Vector3(); clawHub.getWorldPosition(cw);
+        M.worldToLocal(cw);
+        S.heldPrize.position.copy(cw); S.heldPrize.position.y -= 0.09;
+      }
+    }, ()=>{
+      // slip roll on the way home (capsules are slippery)
+      if (S.heldPrize && S.heldPrize.userData.kind==='capsule' && Math.random()<0.14 && S.missedSinceWin<2){
+        sndSlip(); toast('it slipped!');
+        const p = S.heldPrize; S.heldPrize=null;
+        p.userData.caught=false; prizes.push(p);
+        p.position.set((Math.random()-0.5)*0.3, pitY+0.08, (Math.random()-0.5)*0.25);
+        S.missedSinceWin++; S.phase='idle'; returnCarriage(false);
+        return;
+      }
+      returnCarriage(!!S.heldPrize);
+    });
+  });
+}
+function returnCarriage(withPrize){
+  tween(0.9, f=>{
+    carriage.position.x = THREE.MathUtils.lerp(carriage.position.x, chutePos.x, f);
+    carriage.position.z = THREE.MathUtils.lerp(carriage.position.z, chutePos.z, f);
+    if (S.heldPrize){
+      const cw=new THREE.Vector3(); clawHub.getWorldPosition(cw); M.worldToLocal(cw);
+      S.heldPrize.position.copy(cw); S.heldPrize.position.y -= 0.09;
+    }
+  }, ()=>{
+    if (withPrize && S.heldPrize){
+      const p = S.heldPrize; S.heldPrize=null;
+      setClawOpen(0.8); sndWin();
+      S.won++; S.missedSinceWin=0; syncUI();
+      // hop it onto the collection shelf
+      const idx = wonGroup.children.length;
+      const col = idx%3, row = Math.floor(idx/3);
+      tween(0.55, f=>{
+        const a = new THREE.Vector3(); p.getWorldPosition(a); scene.attach(p);
+        const b = new THREE.Vector3(); wonGroup.localToWorld(b.set(-0.18+col*0.18, 0.62+row*0.0, row%2? 0.05:-0.05));
+        const pos = a.lerp(b, f); pos.y += Math.sin(f*Math.PI)*0.25;
+        p.position.copy(pos);
+      }, ()=>{ wonGroup.attach(p); p.rotation.set(0,Math.random()*6.28,0); });
+      toast('prize won!');
+    } else {
+      S.missedSinceWin++; sndSlip();
+      toast(S.missedSinceWin>=2 ? 'next one is a sure grip' : 'so close - try again');
+    }
+    S.phase='idle';
+  });
+}
+
+// ---------- VR panel actions ----------
+function actOn(name){
+  if (name==='Insert coin') insertCoin();
+  else if (name==='Start over') resetGame();
+}
+
+// ---------- controllers ----------
+const raycaster = new THREE.Raycaster();
+const tmpM = new THREE.Matrix4();
+function pointerFromController(c){
+  tmpM.identity().extractRotation(c.matrixWorld);
+  raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+  raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpM);
+}
+function pickTarget(){
+  const hits = raycaster.intersectObjects(clickables, false);
+  return hits.length? hits[0].object : null;
+}
+const controllers = [];
+for (const i of [0,1]){
+  const c = renderer.xr.getController(i);
+  c.addEventListener('selectstart', ()=>{
+    pointerFromController(c);
+    const t = pickTarget();
+    if (t) { actOn(t.parent.userData.action || t.userData.action); }
+    else dropClaw();
+  });
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0,0,-3)]);
+  c.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color:0x8a3f5c, transparent:true, opacity:0.5 })));
+  rig.add(c); controllers.push(c);
+}
+function handleXRInput(dt){
+  const session = renderer.xr.getSession(); if (!session) return;
+  for (const src of session.inputSources){
+    if (!src.gamepad) continue;
+    const ax = src.gamepad.axes;
+    const x = ax[2]!==undefined? ax[2]:(ax[0]||0);
+    const y = ax[3]!==undefined? ax[3]:(ax[1]||0);
+    if (Math.abs(x)>0.12 || Math.abs(y)>0.12) steer(x, y, dt);
+    // A/X button = insert coin
+    if (src.gamepad.buttons[4] && src.gamepad.buttons[4].pressed && !src._aHeld){ src._aHeld=true; insertCoin(); }
+    else if (src.gamepad.buttons[4] && !src.gamepad.buttons[4].pressed) src._aHeld=false;
+  }
+}
+
+// ---------- desktop input ----------
+let desktopActive=false;
+const keys={};
+addEventListener('keydown', e=>{
+  keys[e.code]=true;
+  if (!desktopActive) return;
+  if (e.code==='Space'){ e.preventDefault(); dropClaw(); }
+  if (e.code==='KeyC'){ insertCoin(); }
+  if (e.code==='KeyR'){ resetGame(); }
+});
+addEventListener('keyup', e=>keys[e.code]=false);
+function handleDesktop(dt){
+  if (!desktopActive || renderer.xr.isPresenting) return;
+  const dx = (keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0);
+  const dz = (keys.ArrowDown||keys.KeyS?1:0)-(keys.ArrowUp||keys.KeyW?1:0);
+  if (dx||dz) steer(dx,dz,dt);
+  camera.position.x = Math.sin(performance.now()*0.00013)*0.03;
+  camera.lookAt(0,1.0,0);
+}
+renderer.domElement.addEventListener('pointerdown', ()=>{ /* click canvas = drop when playing */ if (desktopActive && !renderer.xr.isPresenting) {} });
+document.getElementById('b-coin').onclick = insertCoin;
+document.getElementById('b-drop').onclick = dropClaw;
+document.getElementById('b-reset').onclick = resetGame;
+
+// ---------- session / overlay wiring ----------
+renderer.xr.addEventListener('sessionstart', ()=>{
+  vrPanel.visible = true; figLabel.visible = hintLabel.visible = true;
+  document.getElementById('overlay').classList.add('hidden');
+  if (!AC) AC = new (window.AudioContext||window.webkitAudioContext)();
+});
+renderer.xr.addEventListener('sessionend', ()=>{ vrPanel.visible=false; figLabel.visible = hintLabel.visible = false; });
+const vrBtn = VRButton.createButton(renderer);
+vrBtn.style.cssText += ';position:static !important;margin:0 !important;';
+vrBtn.classList.add('pill');
+document.getElementById('vrslot').appendChild(vrBtn);
+document.getElementById('flatbtn').onclick = ()=>{
+  desktopActive=true;
+  if (!AC) AC = new (window.AudioContext||window.webkitAudioContext)();
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('panel').style.display='flex';
+  document.getElementById('counters').style.display='block';
+  document.getElementById('figcap').style.display='block';
+};
+const qs = new URLSearchParams(location.search);
+if (qs.has('play')) document.getElementById('flatbtn').click();
+if (qs.has('drop')){ S.missedSinceWin=2; setTimeout(()=>{ const wp=new THREE.Vector3(); prizes[0].getWorldPosition(wp); M.worldToLocal(wp); carriage.position.set(wp.x, railY-0.02, wp.z); dropClaw(); }, parseInt(qs.get('drop'))||800); }
+
+// ---------- resize + loop ----------
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(()=>{
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const now = performance.now();
+  if (renderer.xr.isPresenting) handleXRInput(dt); else handleDesktop(dt);
+  if (anim) anim(now);
+  // idle claw sway
+  if (S.phase==='idle' || S.phase==='steer'){
+    clawHub.position.y = clawHomeY + Math.sin(now*0.0016)*0.008;
+    const cLen=-clawHub.position.y+0.02; cable.scale.y=cLen; cable.position.y=-cLen/2-0.02;
+  }
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
